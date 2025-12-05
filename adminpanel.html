@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Glacier Admin Panel</title>
+<style>
+    body {
+        background:#000;
+        font-family:Inter, sans-serif;
+        color:white;
+        padding:30px;
+    }
+    input,textarea {
+        width:100%; padding:10px; margin:8px 0;
+        background:#111; border:1px solid #00ffff66;
+        color:white; border-radius:6px;
+    }
+    button {
+        background:#00ffff; padding:10px 16px; border:none;
+        border-radius:6px; font-weight:bold; margin-top:10px;
+        cursor:pointer;
+    }
+    .article {
+        border:1px solid #00ffff55; padding:15px; margin:10px 0;
+        border-radius:10px;
+    }
+    .danger {
+        background:#ff4d4d;
+    }
+</style>
+</head>
+<body>
+
+<h1>Glacier Admin Panel</h1>
+
+<div id="loginBox">
+    <h2>Admin Login</h2>
+    <input id="password" type="password" placeholder="Admin Password">
+    <button onclick="login()">Login</button>
+    <p id="loginError" style="color:red;"></p>
+</div>
+
+<div id="panel" style="display:none;">
+    <h2>Add / Edit Article</h2>
+
+    <input id="title" placeholder="Title">
+    <input id="summary" maxlength="150" placeholder="Summary">
+    <input id="imageUrl" placeholder="Image URL">
+    <textarea id="content" placeholder="Full content"></textarea>
+
+    <button onclick="saveArticle()">Save Article</button>
+
+    <h2>Existing Articles</h2>
+    <div id="list"></div>
+</div>
+
+<script>
+let articles = [];
+let editIndex = null;
+
+// API base URL = current domain
+const API = "/api";
+
+async function login() {
+    const pw = document.getElementById("password").value;
+    const r = await fetch(`${API}/login`, {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ password: pw })
+    });
+
+    if(r.status === 200){
+        document.getElementById("loginBox").style.display="none";
+        document.getElementById("panel").style.display="block";
+        loadArticles();
+    } else {
+        document.getElementById("loginError").textContent = "Wrong password.";
+    }
+}
+
+async function loadArticles(){
+    const r = await fetch(`${API}/news`);
+    articles = await r.json();
+    renderList();
+}
+
+function renderList(){
+    const container = document.getElementById("list");
+    container.innerHTML = "";
+
+    articles.forEach((a,i)=>{
+        const div = document.createElement("div");
+        div.className = "article";
+        div.innerHTML = `
+            <strong>${a.title}</strong><br>
+            <small>${new Date(a.createdAt).toLocaleString()}</small><br><br>
+            <button onclick="edit(${i})">Edit</button>
+            <button class="danger" onclick="removeArticle(${i})">Delete</button>
+        `;
+        container.appendChild(div);
+    });
+}
+
+function edit(i){
+    editIndex = i;
+    const a = articles[i];
+
+    title.value = a.title;
+    summary.value = a.summary;
+    imageUrl.value = a.imageUrl;
+    content.value = a.content;
+}
+
+async function saveArticle(){
+    const obj = {
+        title: title.value.trim(),
+        summary: summary.value.trim(),
+        imageUrl: imageUrl.value.trim(),
+        content: content.value.trim(),
+        createdAt: Date.now()
+    };
+
+    if(editIndex !== null){
+        obj.createdAt = articles[editIndex].createdAt; // preserve original date
+        articles[editIndex] = obj;
+        editIndex = null;
+    } else {
+        articles.push(obj);
+    }
+
+    await upload();
+    loadArticles();
+}
+
+async function removeArticle(i){
+    if(!confirm("Delete this article?")) return;
+    articles.splice(i,1);
+    await upload();
+    loadArticles();
+}
+
+async function upload(){
+    await fetch(`${API}/news`, {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body:JSON.stringify({ articles })
+    });
+}
+</script>
+
+</body>
+</html>
