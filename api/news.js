@@ -1,25 +1,28 @@
-import fs from "fs";
-import path from "path";
+import { createClient } from "@vercel/kv";
 
-export default async function handler(req, res) { // NOTE: Added 'async' here
-    const file = path.join(process.cwd(), "news.json");
+// Initialize the Vercel KV client
+const kv = createClient({
+    url: process.env.KV_REST_API_URL,
+    token: process.env.KV_REST_API_TOKEN,
+});
 
+const ARTICLES_KEY = "glacier_articles"; // The key name for your data in KV
+
+export default async function handler(req, res) {
     if (req.method === "GET") {
         try {
-            const data = fs.readFileSync(file, "utf8");
-            return res.status(200).send(data);
+            // Read data from Vercel KV
+            const articles = await kv.get(ARTICLES_KEY);
+            // Return articles, defaulting to an empty array if nothing is found
+            return res.status(200).json(articles || []);
         } catch (error) {
-            // Handle case where news.json doesn't exist yet (return empty array)
-            if (error.code === 'ENOENT') {
-                fs.writeFileSync(file, '[]');
-                return res.status(200).send('[]');
-            }
-            return res.status(500).json({ error: "Failed to read file." });
+            console.error("KV GET Error:", error);
+            return res.status(500).json({ error: "Failed to read articles from KV." });
         }
     }
 
     if (req.method === "POST") {
-        // --- START FIX: Manually parse the request body ---
+        // --- FIX: Manually parse the request body from the client ---
         let body = "";
         await new Promise(resolve => {
             req.on("data", chunk => body += chunk);
@@ -32,19 +35,21 @@ export default async function handler(req, res) { // NOTE: Added 'async' here
         } catch (e) {
             return res.status(400).json({ error: "Invalid JSON body." });
         }
+        // --- End of Body Parsing Fix ---
 
         const articles = data.articles;
-        // --- END FIX ---
 
-        if (!articles) {
-             return res.status(400).json({ error: "Missing 'articles' in body." });
+        if (!articles || !Array.isArray(articles)) {
+             return res.status(400).json({ error: "Missing or invalid 'articles' array in body." });
         }
-        
+
         try {
-            fs.writeFileSync(file, JSON.stringify(articles, null, 2));
+            // Write data to Vercel KV
+            await kv.set(ARTICLES_KEY, articles);
             return res.status(200).json({ ok: true });
         } catch (error) {
-            return res.status(500).json({ error: "Failed to write file." });
+            console.error("KV POST Error:", error);
+            return res.status(500).json({ error: "Failed to write articles to KV." });
         }
     }
 
